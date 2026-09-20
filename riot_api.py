@@ -30,6 +30,32 @@ async def get_account_by_riot_id(game_name, tag_line):
             return None
 
 async def get_current_game(puuid, platform="la1"):
+    url = (
+        f"https://{platform}.api.riotgames.com"
+        f"/lol/spectator/v5/active-games/by-summoner/{puuid}"
+    )
+
+    headers = {
+        "X-Riot-Token": RIOT_API_KEY
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers) as response:
+
+            if response.status == 200:
+                return await response.json()
+
+            if response.status == 404:
+                return None
+
+            error_text = await response.text()
+
+            print(f"Spectator API Error: {response.status}")
+            print(f"Response: {error_text}")
+
+            return None
+
+async def get_current_game(puuid, platform="la1"):
 
     url = (
         f"https://{platform}.api.riotgames.com"
