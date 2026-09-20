@@ -81,3 +81,22 @@ async def get_current_game(puuid, platform="la1"):
             print(f"Response: {error_text}")
 
             return None
+
+async def get_champion_names():
+    url = "https://ddragon.leagueoflegends.com/cdn/16.18.1/data/en_US/champion.json"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+
+            if response.status != 200:
+                print(f"Data Dragon Error: {response.status}")
+                return {}
+
+            data = await response.json()
+
+            champion_names = {}
+
+            for champion in data["data"].values():
+                champion_names[int(champion["key"])] = champion["name"]
+
+            return champion_names

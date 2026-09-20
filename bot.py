@@ -4,7 +4,11 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from riot_api import get_account_by_riot_id, get_current_game
+from riot_api import (
+    get_account_by_riot_id,
+    get_current_game,
+    get_champion_names
+)
 
 
 load_dotenv()
@@ -102,9 +106,49 @@ async def live(
         )
         return
 
-    await interaction.followup.send(
-        f"🎮 **{game_name}#{tag_line} is currently in a League game!**"
+    champion_names = await get_champion_names()
+
+    blue_team = []
+    red_team = []
+
+    for participant in game["participants"]:
+        riot_id = participant["riotId"]
+        champion_id = participant["championId"]
+
+        champion_name = champion_names.get(
+            champion_id,
+            f"Champion {champion_id}"
+        )
+
+        player_info = f"**{riot_id}** — {champion_name}"
+
+        if participant["teamId"] == 100:
+            blue_team.append(player_info)
+
+        elif participant["teamId"] == 200:
+            red_team.append(player_info)
+
+    embed = discord.Embed(
+        title="🎮 Live League Match",
+        description=f"**{game_name}#{tag_line}** is currently in game!"
     )
 
+    embed.add_field(
+        name="🔵 Blue Team",
+        value="\n".join(blue_team),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🔴 Red Team",
+        value="\n".join(red_team),
+        inline=False
+    )
+
+    embed.set_footer(
+        text=f"Game ID: {game['gameId']}"
+    )
+
+    await interaction.followup.send(embed=embed)
 
 bot.run(DISCORD_TOKEN)
