@@ -100,3 +100,36 @@ async def get_champion_names():
                 champion_names[int(champion["key"])] = champion["name"]
 
             return champion_names
+
+async def get_player_rank(puuid, platform="la1"):
+    url = (
+        f"https://{platform}.api.riotgames.com"
+        f"/lol/league/v4/entries/by-puuid/{puuid}"
+    )
+
+    headers = {
+        "X-Riot-Token": RIOT_API_KEY
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers) as response:
+
+            if response.status == 200:
+                ranked_data = await response.json()
+
+                for queue in ranked_data:
+                    if queue["queueType"] == "RANKED_SOLO_5x5":
+                        tier = queue["tier"]
+                        rank = queue["rank"]
+                        lp = queue["leaguePoints"]
+
+                        return f"{tier.title()} {rank} ({lp} LP)"
+
+                return "Unranked"
+
+            error_text = await response.text()
+
+            print(f"Rank API Error: {response.status}")
+            print(f"Response: {error_text}")
+
+            return "Unknown"

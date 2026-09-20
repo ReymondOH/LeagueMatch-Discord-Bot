@@ -1,4 +1,5 @@
 import os
+import asyncio
 
 import discord
 from discord.ext import commands
@@ -7,7 +8,8 @@ from dotenv import load_dotenv
 from riot_api import (
     get_account_by_riot_id,
     get_current_game,
-    get_champion_names
+    get_champion_names,
+    get_player_rank
 )
 
 
@@ -111,20 +113,22 @@ async def live(
     blue_team = []
     red_team = []
 
+    rank_tasks = []
+
     for participant in game["participants"]:
+        rank_tasks.append(get_player_rank(participant["puuid"], platform="la1"))
+
+    player_ranks = await asyncio.gather(*rank_tasks)
+
+    for participant, player_rank in zip(game["participants"], player_ranks):
         riot_id = participant["riotId"]
         champion_id = participant["championId"]
+        champion_name = champion_names.get(champion_id, f"Champion {champion_id}")
 
-        champion_name = champion_names.get(
-            champion_id,
-            f"Champion {champion_id}"
-        )
-
-        player_info = f"**{riot_id}** — {champion_name}"
+        player_info = f"{riot_id} | {champion_name} | {player_rank}"
 
         if participant["teamId"] == 100:
             blue_team.append(player_info)
-
         elif participant["teamId"] == 200:
             red_team.append(player_info)
 
