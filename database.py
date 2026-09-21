@@ -31,6 +31,7 @@ async def create_database():
         puuid VARCHAR(100) NOT NULL,
         platform VARCHAR(10) NOT NULL,
         last_game_id BIGINT,
+        tracking_enabled BOOLEAN NOT NULL DEFAULT TRUE,
         PRIMARY KEY (guild_id, discord_id)
         )
     """)
@@ -114,7 +115,12 @@ async def get_all_accounts():
     )
 
     accounts = await connection.fetch("""
-        SELECT guild_id,discord_id, riot_id, puuid, platform
+        SELECT guild_id,
+            discord_id,
+            riot_id, 
+            puuid, 
+            platform, 
+            tracking_enabled
         FROM linked_accounts
     """)
 
@@ -178,6 +184,24 @@ async def set_announcement_channel(guild_id, channel_id):
         DO UPDATE SET
             announcement_channel_id = EXCLUDED.announcement_channel_id
     """, guild_id, channel_id)
+
+    await connection.close()
+
+async def set_tracking(guild_id, discord_id, enabled):
+    connection = await asyncpg.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+
+    await connection.execute("""
+        UPDATE linked_accounts
+        SET tracking_enabled = $1
+        WHERE guild_id = $2
+        AND discord_id = $3
+    """, enabled, guild_id, discord_id)
 
     await connection.close()
 

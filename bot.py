@@ -5,6 +5,7 @@ import discord
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
 from database import (
+    set_tracking,
     delete_account,
     get_announcement_channel,
     set_announcement_channel,
@@ -55,6 +56,11 @@ async def check_player_activity():
         riot_id = account["riot_id"]
         puuid = account["puuid"]
         platform = account["platform"]
+        tracking_enabled = account["tracking_enabled"]
+
+        if not tracking_enabled:
+            print(f"{riot_id}: Tracking is disabled")
+            continue
 
         guild = bot.get_guild(guild_id)
 
@@ -230,6 +236,48 @@ async def unlink(interaction: discord.Interaction):
     await interaction.response.send_message(
         f"✅ **{riot_id}** has been unlinked from your Discord account."
     )
+
+@bot.tree.command(
+    name="tracking",
+    description="Enable or disable automatic League match notifications"
+)
+async def tracking(
+    interaction: discord.Interaction,
+    enabled: bool
+):
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "This command can only be used inside a server.",
+            ephemeral=True
+        )
+        return
+
+    account = await get_account(
+        interaction.guild.id,
+        interaction.user.id
+    )
+
+    if account is None:
+        await interaction.response.send_message(
+            "You have not linked a Riot account yet. Use `/link` first.",
+            ephemeral=True
+        )
+        return
+
+    await set_tracking(
+        interaction.guild.id,
+        interaction.user.id,
+        enabled
+    )
+
+    if enabled:
+        await interaction.response.send_message(
+            "✅ Automatic match notifications are now enabled."
+        )
+    else:
+        await interaction.response.send_message(
+            "🔕 Automatic match notifications are now disabled."
+        )
 
 async def create_match_embed(game, riot_id, platform):
     champion_names = await get_champion_names()
