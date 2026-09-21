@@ -2,12 +2,13 @@ import os
 import asyncio
 
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from dotenv import load_dotenv
 from database import (
     create_database,
     save_account,
-    get_account
+    get_account,
+    get_all_accounts,
 )
 
 from riot_api import (
@@ -39,6 +40,66 @@ RIOT_API_KEY = os.getenv("RIOT_API_KEY")
 print("Riot key loaded:", RIOT_API_KEY is not None)
 
 
+@tasks.loop(seconds=60)
+async def check_player_activity():
+    print("Checking linked player activity...")
+
+    accounts = await get_all_accounts()
+
+    for account in accounts:
+        discord_id = account["discord_id"]
+        riot_id = account["riot_id"]
+        puuid = account["puuid"]
+        platform = account["platform"]
+
+        print(f"Checking {riot_id} - Discord ID: {discord_id}")
+
+        member = None
+
+        for guild in bot.guilds:
+            member = guild.get_member(discord_id)
+
+            if member is not None:
+                break
+
+        if member is None:
+            print(f"{riot_id}: Discord member not found")
+            continue
+
+        print(f"Discord member found: {member}")
+
+        print("Activities:")
+        for activity in member.activities:
+            print(f"  - {activity.name}")
+
+        playing_league = any(
+            activity.name == "League of Legends"
+            for activity in member.activities
+        )
+
+        if playing_league:
+            print(f"{riot_id}: Playing League - checking current game")
+
+            game = await get_current_game(
+                puuid,
+                platform=account["platform"]
+            )
+
+            if game is None:
+                print(f"{riot_id}: Not currently in a game")
+                continue
+
+            game_id = game["gameId"]
+
+            print(f"{riot_id}: Currently in game {game_id}")
+
+        else:
+            print(f"{riot_id}: Not playing League - skipping")
+
+@check_player_activity.before_loop
+async def before_check_player_activity():
+    await bot.wait_until_ready()
+
 @bot.event
 async def on_ready():
     await create_database()
@@ -46,6 +107,9 @@ async def on_ready():
 
     bot.tree.copy_global_to(guild=guild)
     synced = await bot.tree.sync(guild=guild)
+
+    if not check_player_activity.is_running():
+        check_player_activity.start()
 
     print(f"Logged in as {bot.user}")
     print(f"Synced {len(synced)} commands to test server")

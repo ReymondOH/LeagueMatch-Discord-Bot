@@ -90,3 +90,21 @@ async def get_account(discord_id):
     await connection.close()
 
     return account
+
+async def get_all_accounts():
+    connection = await asyncpg.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+
+    accounts = await connection.fetch("""
+        SELECT discord_id, riot_id, puuid, platform
+        FROM linked_accounts
+    """)
+
+    await connection.close()
+
+    return accounts
