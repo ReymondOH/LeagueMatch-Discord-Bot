@@ -24,11 +24,14 @@ async def create_database():
     )
 
     await connection.execute("""
-        CREATE TABLE IF NOT EXISTS linked_accounts (
-            discord_id BIGINT PRIMARY KEY,
-            riot_id VARCHAR(100) NOT NULL,
-            puuid VARCHAR(100) NOT NULL,
-            platform VARCHAR(10) NOT NULL
+    CREATE TABLE IF NOT EXISTS linked_accounts (
+        guild_id BIGINT NOT NULL,
+        discord_id BIGINT NOT NULL,
+        riot_id VARCHAR(100) NOT NULL,
+        puuid VARCHAR(100) NOT NULL,
+        platform VARCHAR(10) NOT NULL,
+        last_game_id BIGINT,
+        PRIMARY KEY (guild_id, discord_id)
         )
     """)
 
@@ -43,6 +46,7 @@ async def create_database():
 
 
 async def save_account(
+    guild_id,
     discord_id,
     riot_id,
     puuid,
@@ -58,19 +62,21 @@ async def save_account(
 
     await connection.execute("""
         INSERT INTO linked_accounts (
+            guild_id,
             discord_id,
             riot_id,
             puuid,
             platform
         )
-        VALUES ($1, $2, $3, $4)
+        VALUES ($1, $2, $3, $4, $5)
 
-        ON CONFLICT (discord_id)
+        ON CONFLICT (guild_id,discord_id)
         DO UPDATE SET
             riot_id = EXCLUDED.riot_id,
             puuid = EXCLUDED.puuid,
             platform = EXCLUDED.platform
     """,
+        guild_id,
         discord_id,
         riot_id,
         puuid,
@@ -79,7 +85,7 @@ async def save_account(
 
     await connection.close()
 
-async def get_account(discord_id):
+async def get_account(guild_id, discord_id):
     connection = await asyncpg.connect(
         host=DB_HOST,
         port=DB_PORT,
@@ -91,8 +97,8 @@ async def get_account(discord_id):
     account = await connection.fetchrow("""
         SELECT riot_id, puuid, platform
         FROM linked_accounts
-        WHERE discord_id = $1
-    """, discord_id)
+        WHERE guild_id = $1 AND discord_id = $2
+    """, guild_id, discord_id)
 
     await connection.close()
 
@@ -108,7 +114,7 @@ async def get_all_accounts():
     )
 
     accounts = await connection.fetch("""
-        SELECT discord_id, riot_id, puuid, platform
+        SELECT guild_id,discord_id, riot_id, puuid, platform
         FROM linked_accounts
     """)
 
@@ -116,7 +122,7 @@ async def get_all_accounts():
 
     return accounts
 
-async def get_last_game_id(discord_id):
+async def get_last_game_id(guild_id, discord_id):
     connection = await asyncpg.connect(
         host=DB_HOST,
         port=DB_PORT,
@@ -128,14 +134,14 @@ async def get_last_game_id(discord_id):
     last_game_id = await connection.fetchval("""
         SELECT last_game_id
         FROM linked_accounts
-        WHERE discord_id = $1
-    """, discord_id)
+        WHERE guild_id = $1 AND discord_id = $2
+    """, guild_id, discord_id)
 
     await connection.close()
 
     return last_game_id
 
-async def update_last_game_id(discord_id, game_id):
+async def update_last_game_id(guild_id, discord_id, game_id):
     connection = await asyncpg.connect(
         host=DB_HOST,
         port=DB_PORT,
@@ -147,8 +153,8 @@ async def update_last_game_id(discord_id, game_id):
     await connection.execute("""
         UPDATE linked_accounts
         SET last_game_id = $1
-        WHERE discord_id = $2
-    """, game_id, discord_id)
+        WHERE guild_id = $2 AND discord_id = $3
+    """, game_id, guild_id, discord_id)
 
     await connection.close()
 

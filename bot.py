@@ -60,11 +60,20 @@ async def check_player_activity():
 
         member = None
 
-        for guild in bot.guilds:
-            member = guild.get_member(discord_id)
+        guild_id = account.get("guild_id")
 
-            if member is not None:
-                break
+        guild = bot.get_guild(guild_id)
+
+        if guild is None:
+            print(f"{riot_id}: Guild not found for guild ID {guild_id}")
+            continue
+
+        member = guild.get_member(discord_id)
+
+        if member is None:
+            print(f"{riot_id}: Discord member not found in guild {guild.name} ({guild.id})")
+            continue
+        
 
         if member is None:
             print(f"{riot_id}: Discord member not found")
@@ -95,7 +104,7 @@ async def check_player_activity():
 
             game_id = game["gameId"]
 
-            last_game_id = await get_last_game_id(discord_id)
+            last_game_id = await get_last_game_id(guild_id, discord_id)
 
             if last_game_id == game_id:
                 print(f"{riot_id}: Already notified for this game - skipping")
@@ -126,7 +135,7 @@ async def check_player_activity():
 
             await channel.send(embed=embed)
 
-            await update_last_game_id(discord_id, game_id)
+            await update_last_game_id(guild_id, discord_id, game_id)
 
             print(f"{riot_id}: Notification sent for game {game_id}")
 
@@ -182,10 +191,11 @@ async def link(
     riot_id = f"{riot_name}#{riot_tag}"
 
     await save_account(
-    interaction.user.id,
-    riot_id,
-    puuid,
-    "la1"
+        interaction.guild.id,
+        interaction.user.id,
+        riot_id,
+        puuid,
+        "la1"
     )
 
     await interaction.followup.send(
@@ -318,7 +328,13 @@ async def live(
 ):
     await interaction.response.defer()
 
-    account = await get_account(interaction.user.id)
+    if interaction.guild is None:
+        await interaction.followup.send(
+            "This command can only be used inside a server."
+        )
+        return
+
+    account = await get_account(interaction.guild.id, interaction.user.id)
 
     if account is None:
         await interaction.followup.send(
