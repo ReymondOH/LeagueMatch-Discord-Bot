@@ -181,6 +181,24 @@ async def set_announcement_channel(guild_id, channel_id):
 
     await connection.close()
 
+async def delete_account(guild_id, discord_id):
+    connection = await asyncpg.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+
+    result = await connection.execute("""
+        DELETE FROM linked_accounts
+        WHERE guild_id = $1
+        AND discord_id = $2
+    """, guild_id, discord_id)
+
+    await connection.close()
+
+    return result
 
 async def get_announcement_channel(guild_id):
     connection = await asyncpg.connect(

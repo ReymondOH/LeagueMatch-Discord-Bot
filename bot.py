@@ -5,6 +5,7 @@ import discord
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
 from database import (
+    delete_account,
     get_announcement_channel,
     set_announcement_channel,
     create_database,
@@ -203,6 +204,39 @@ async def link(
         f"{interaction.user.mention}."
     )
 
+@bot.tree.command(
+    name="unlink",
+    description="Unlink your Riot account from this Discord server"
+)
+async def unlink(interaction: discord.Interaction):
+
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "This command can only be used inside a server."
+        )
+        return
+
+    account = await get_account(
+        interaction.guild.id,
+        interaction.user.id
+    )
+
+    if account is None:
+        await interaction.response.send_message(
+            "You do not have a Riot account linked in this server."
+        )
+        return
+
+    riot_id = account["riot_id"]
+
+    await delete_account(
+        interaction.guild.id,
+        interaction.user.id
+    )
+
+    await interaction.response.send_message(
+        f"✅ **{riot_id}** has been unlinked from your Discord account."
+    )
 
 async def create_match_embed(game, riot_id, platform):
     champion_names = await get_champion_names()
