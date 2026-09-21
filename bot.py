@@ -4,7 +4,11 @@ import asyncio
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-from database import create_database, save_account
+from database import (
+    create_database,
+    save_account,
+    get_account
+)
 
 from riot_api import (
     get_account_by_riot_id,
@@ -86,36 +90,34 @@ async def link(
 
 @bot.tree.command(
     name="live",
-    description="Check if a Riot account is currently in a League game"
+    description="Check if your linked Riot account is currently in a League game"
 )
 async def live(
-    interaction: discord.Interaction,
-    game_name: str,
-    tag_line: str
+    interaction: discord.Interaction
 ):
     await interaction.response.defer()
 
-    account = await get_account_by_riot_id(
-        game_name,
-        tag_line
-    )
+    account = await get_account(interaction.user.id)
 
     if account is None:
         await interaction.followup.send(
-            "Could not find that Riot account."
+            "You have not linked your Riot account yet. "
+            "Use the `/link` command to link your account."
         )
         return
 
+    riot_id = account["riot_id"]
     puuid = account["puuid"]
+    platform = account["platform"]
 
     game = await get_current_game(
         puuid,
-        platform="la1"
+        platform=platform
     )
 
     if game is None:
         await interaction.followup.send(
-            f"**{game_name}#{tag_line}** is not currently in a game."
+            f"**{riot_id}** is not currently in a game."
         )
         return
 
@@ -127,7 +129,7 @@ async def live(
     rank_tasks = []
 
     for participant in game["participants"]:
-        rank_tasks.append(get_player_rank(participant["puuid"], platform="la1"))
+        rank_tasks.append(get_player_rank(participant["puuid"], platform=platform))
 
     player_ranks = await asyncio.gather(*rank_tasks)
 
@@ -145,7 +147,7 @@ async def live(
 
     embed = discord.Embed(
         title="🎮 Live League Match",
-        description=f"**{game_name}#{tag_line}** is currently in game!"
+        description=f"**{riot_id}** is currently in game!"
     )
 
     embed.add_field(

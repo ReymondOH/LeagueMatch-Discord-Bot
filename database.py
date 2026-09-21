@@ -71,3 +71,22 @@ async def save_account(
     )
 
     await connection.close()
+
+async def get_account(discord_id):
+    connection = await asyncpg.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+
+    account = await connection.fetchrow("""
+        SELECT riot_id, puuid, platform
+        FROM linked_accounts
+        WHERE discord_id = $1
+    """, discord_id)
+
+    await connection.close()
+
+    return account
