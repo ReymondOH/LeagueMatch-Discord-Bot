@@ -9,6 +9,8 @@ from database import (
     save_account,
     get_account,
     get_all_accounts,
+    get_last_game_id,
+    update_last_game_id
 )
 
 from riot_api import (
@@ -24,6 +26,10 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 
 GUILD_ID = int(os.getenv("DISCORD_GUILD_ID"))
+
+ANNOUNCEMENT_CHANNEL_ID = int(
+    os.getenv("ANNOUNCEMENT_CHANNEL_ID")
+)
 
 intents = discord.Intents.default()
 intents.presences = True
@@ -82,7 +88,7 @@ async def check_player_activity():
 
             game = await get_current_game(
                 puuid,
-                platform=account["platform"]
+                platform=platform
             )
 
             if game is None:
@@ -91,7 +97,32 @@ async def check_player_activity():
 
             game_id = game["gameId"]
 
-            print(f"{riot_id}: Currently in game {game_id}")
+            last_game_id = await get_last_game_id(discord_id)
+
+            if last_game_id == game_id:
+                print(f"{riot_id}: Already notified for this game - skipping")
+                continue
+
+            print(f"{riot_id}: New game detected"
+                  )
+
+            channel = bot.get_channel(ANNOUNCEMENT_CHANNEL_ID)
+
+            if channel is None:
+                print(f"{riot_id}: Announcement channel not found")
+                continue
+
+            embed = await create_match_embed(
+                game, 
+                riot_id,
+                platform
+            )
+
+            await channel.send(embed=embed)
+
+            await update_last_game_id(discord_id, game_id)
+
+            print(f"{riot_id}: Notification sent for game {game_id}")
 
         else:
             print(f"{riot_id}: Not playing League - skipping")
@@ -156,6 +187,70 @@ async def link(
     )
 
 
+async def create_match_embed(game, riot_id, platform):
+    champion_names = await get_champion_names()
+
+    blue_team = []
+    red_team = []
+
+    rank_tasks = []
+
+    for participant in game["participants"]:
+        rank_tasks.append(
+            get_player_rank(
+                participant["puuid"],
+                platform=platform
+            )
+        )
+
+    player_ranks = await asyncio.gather(*rank_tasks)
+
+    for participant, player_rank in zip(
+        game["participants"],
+        player_ranks
+    ):
+        player_riot_id = participant["riotId"]
+        champion_id = participant["championId"]
+
+        champion_name = champion_names.get(
+            champion_id,
+            f"Champion {champion_id}"
+        )
+
+        player_info = (
+            f"**{player_riot_id}** — {champion_name}\n"
+            f"└ {player_rank}"
+        )
+
+        if participant["teamId"] == 100:
+            blue_team.append(player_info)
+
+        elif participant["teamId"] == 200:
+            red_team.append(player_info)
+
+    embed = discord.Embed(
+        title="🎮 Live League Match",
+        description=f"**{riot_id}** has entered a game!"
+    )
+
+    embed.add_field(
+        name="🔵 Blue Team",
+        value="\n".join(blue_team),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🔴 Red Team",
+        value="\n".join(red_team),
+        inline=False
+    )
+
+    embed.set_footer(
+        text=f"Game ID: {game['gameId']}"
+    )
+
+    return embed
+
 #Temporary command to check if the bot can read the user's Discord activity
 @bot.tree.command(
     name="activity",
@@ -218,49 +313,10 @@ async def live(
         )
         return
 
-    champion_names = await get_champion_names()
-
-    blue_team = []
-    red_team = []
-
-    rank_tasks = []
-
-    for participant in game["participants"]:
-        rank_tasks.append(get_player_rank(participant["puuid"], platform=platform))
-
-    player_ranks = await asyncio.gather(*rank_tasks)
-
-    for participant, player_rank in zip(game["participants"], player_ranks):
-        riot_id = participant["riotId"]
-        champion_id = participant["championId"]
-        champion_name = champion_names.get(champion_id, f"Champion {champion_id}")
-
-        player_info = f"{riot_id} | {champion_name} | {player_rank}"
-
-        if participant["teamId"] == 100:
-            blue_team.append(player_info)
-        elif participant["teamId"] == 200:
-            red_team.append(player_info)
-
-    embed = discord.Embed(
-        title="🎮 Live League Match",
-        description=f"**{riot_id}** is currently in game!"
-    )
-
-    embed.add_field(
-        name="🔵 Blue Team",
-        value="\n".join(blue_team),
-        inline=False
-    )
-
-    embed.add_field(
-        name="🔴 Red Team",
-        value="\n".join(red_team),
-        inline=False
-    )
-
-    embed.set_footer(
-        text=f"Game ID: {game['gameId']}"
+    embed = await create_match_embed(
+        game,
+        riot_id,
+        platform
     )
 
     await interaction.followup.send(embed=embed)

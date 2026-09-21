@@ -108,3 +108,39 @@ async def get_all_accounts():
     await connection.close()
 
     return accounts
+
+async def get_last_game_id(discord_id):
+    connection = await asyncpg.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+
+    last_game_id = await connection.fetchval("""
+        SELECT last_game_id
+        FROM linked_accounts
+        WHERE discord_id = $1
+    """, discord_id)
+
+    await connection.close()
+
+    return last_game_id
+
+async def update_last_game_id(discord_id, game_id):
+    connection = await asyncpg.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+
+    await connection.execute("""
+        UPDATE linked_accounts
+        SET last_game_id = $1
+        WHERE discord_id = $2
+    """, game_id, discord_id)
+
+    await connection.close()
