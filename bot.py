@@ -4,6 +4,7 @@ import asyncio
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
+from database import create_database, save_account
 
 from riot_api import (
     get_account_by_riot_id,
@@ -33,6 +34,7 @@ print("Riot key loaded:", RIOT_API_KEY is not None)
 
 @bot.event
 async def on_ready():
+    await create_database()
     guild = discord.Object(id=GUILD_ID)
 
     bot.tree.copy_global_to(guild=guild)
@@ -68,9 +70,18 @@ async def link(
     riot_name = account["gameName"]
     riot_tag = account["tagLine"]
 
+    riot_id = f"{riot_name}#{riot_tag}"
+
+    await save_account(
+    interaction.user.id,
+    riot_id,
+    puuid,
+    "la1"
+    )
+
     await interaction.followup.send(
-        f"Found Riot account: **{riot_name}#{riot_tag}**\n"
-        f"PUUID: `{puuid}`"
+        f"✅ **{riot_id}** has been linked to "
+        f"{interaction.user.mention}."
     )
 
 @bot.tree.command(
