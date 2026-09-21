@@ -28,8 +28,6 @@ load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 
-GUILD_ID = int(os.getenv("DISCORD_GUILD_ID"))
-
 intents = discord.Intents.default()
 intents.presences = True
 intents.members = True
@@ -52,27 +50,22 @@ async def check_player_activity():
     accounts = await get_all_accounts()
 
     for account in accounts:
+        guild_id = account["guild_id"]
         discord_id = account["discord_id"]
         riot_id = account["riot_id"]
         puuid = account["puuid"]
         platform = account["platform"]
 
-        print(f"Checking {riot_id} - Discord ID: {discord_id}")
-
-        member = None
-
-        guild_id = account.get("guild_id")
-
         guild = bot.get_guild(guild_id)
 
         if guild is None:
-            print(f"{riot_id}: Guild not found for guild ID {guild_id}")
+            print(f"{riot_id}: Discord server not found")
             continue
 
         member = guild.get_member(discord_id)
 
         if member is None:
-            print(f"{riot_id}: Discord member not found in guild {guild.name} ({guild.id})")
+            print(f"{riot_id}: Discord member not found in {guild.name}")
             continue
         
 
@@ -115,17 +108,17 @@ async def check_player_activity():
                   )
 
             channel_id = await get_announcement_channel(
-                guild.id
+                guild_id
             )
 
             if channel_id is None:
-                print(f"{riot_id}: No announcement channel set - skipping")
+                print(f"{guild.name}: No annuncement channel set")
                 continue
 
             channel = bot.get_channel(channel_id)
 
             if channel is None:
-                print(f"{riot_id}: Announcement channel not found")
+                print(f"{guild.name}: Announcement channel not found")
                 continue
 
             embed = await create_match_embed(
@@ -150,16 +143,16 @@ async def before_check_player_activity():
 @bot.event
 async def on_ready():
     await create_database()
-    guild = discord.Object(id=GUILD_ID)
 
-    bot.tree.copy_global_to(guild=guild)
-    synced = await bot.tree.sync(guild=guild)
+    #Sync global commands
+    synced = await bot.tree.sync()
 
     if not check_player_activity.is_running():
         check_player_activity.start()
 
     print(f"Logged in as {bot.user}")
-    print(f"Synced {len(synced)} commands to test server")
+    print(f"Connected to PostgreSQL")
+    print(f"Synced {len(synced)} commands")
 
 
 
@@ -340,9 +333,17 @@ async def setchannel(
 ):
     if interaction.guild is None:
         await interaction.response.send_message(
-            "This command can only be used inside a server."
+            "This command can only be used inside a server.",
+            ephemeral=True
         )
         return
+
+    if not interaction.user.guild_permissions.manage_guild:
+            await interaction.response.send_message(
+                "You need the Manage Server permission to use this command.",
+                ephemeral=True
+            )
+            return
 
     await set_announcement_channel(
         interaction.guild.id,
@@ -352,6 +353,8 @@ async def setchannel(
     await interaction.response.send_message(
         f"League match notifications will be sent to {channel.mention}."
     )
+
+    
 
 @bot.tree.command(
     name="live",
