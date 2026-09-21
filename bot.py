@@ -25,11 +25,14 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("DISCORD_GUILD_ID"))
 
 intents = discord.Intents.default()
+intents.presences = True
+intents.members = True
 
 bot = commands.Bot(
     command_prefix="!",
     intents=intents
 )
+
 
 
 RIOT_API_KEY = os.getenv("RIOT_API_KEY")
@@ -87,6 +90,36 @@ async def link(
         f"✅ **{riot_id}** has been linked to "
         f"{interaction.user.mention}."
     )
+
+
+#Temporary command to check if the bot can read the user's Discord activity
+@bot.tree.command(
+    name="activity",
+    description="Check your current Discord activity"
+)
+async def activity(interaction: discord.Interaction):
+
+    member = interaction.user
+
+    print(f"Checking activity for {member}")
+
+    for activity in member.activities:
+        print(activity.name)
+
+    playing_league = any(
+        activity.name == "League of Legends"
+        for activity in member.activities
+    )
+
+    if playing_league:
+        await interaction.response.send_message(
+            "League of Legends detected!"
+        )
+    else:
+        await interaction.response.send_message(
+            "League of Legends not detected."
+        )
+
 
 @bot.tree.command(
     name="live",
