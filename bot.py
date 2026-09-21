@@ -5,6 +5,8 @@ import discord
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
 from database import (
+    get_announcement_channel,
+    set_announcement_channel,
     create_database,
     save_account,
     get_account,
@@ -26,10 +28,6 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 
 GUILD_ID = int(os.getenv("DISCORD_GUILD_ID"))
-
-ANNOUNCEMENT_CHANNEL_ID = int(
-    os.getenv("ANNOUNCEMENT_CHANNEL_ID")
-)
 
 intents = discord.Intents.default()
 intents.presences = True
@@ -106,7 +104,15 @@ async def check_player_activity():
             print(f"{riot_id}: New game detected"
                   )
 
-            channel = bot.get_channel(ANNOUNCEMENT_CHANNEL_ID)
+            channel_id = await get_announcement_channel(
+                guild.id
+            )
+
+            if channel_id is None:
+                print(f"{riot_id}: No announcement channel set - skipping")
+                continue
+
+            channel = bot.get_channel(channel_id)
 
             if channel is None:
                 print(f"{riot_id}: Announcement channel not found")
@@ -144,6 +150,7 @@ async def on_ready():
 
     print(f"Logged in as {bot.user}")
     print(f"Synced {len(synced)} commands to test server")
+
 
 
 @bot.tree.command(
@@ -279,6 +286,28 @@ async def activity(interaction: discord.Interaction):
             "League of Legends not detected."
         )
 
+@bot.tree.command(
+    name="setchannel",
+    description="Set the channel for League match notifications"
+)
+async def setchannel(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel
+):
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "This command can only be used inside a server."
+        )
+        return
+
+    await set_announcement_channel(
+        interaction.guild.id,
+        channel.id
+    )
+
+    await interaction.response.send_message(
+        f"League match notifications will be sent to {channel.mention}."
+    )
 
 @bot.tree.command(
     name="live",

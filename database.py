@@ -32,6 +32,13 @@ async def create_database():
         )
     """)
 
+    await connection.execute("""
+    CREATE TABLE IF NOT EXISTS guild_settings (
+        guild_id BIGINT PRIMARY KEY,
+        announcement_channel_id BIGINT NOT NULL
+    )
+""")
+
     await connection.close()
 
 
@@ -144,3 +151,46 @@ async def update_last_game_id(discord_id, game_id):
     """, game_id, discord_id)
 
     await connection.close()
+
+async def set_announcement_channel(guild_id, channel_id):
+    connection = await asyncpg.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+
+    await connection.execute("""
+        INSERT INTO guild_settings (
+            guild_id,
+            announcement_channel_id
+        )
+        VALUES ($1, $2)
+
+        ON CONFLICT (guild_id)
+        DO UPDATE SET
+            announcement_channel_id = EXCLUDED.announcement_channel_id
+    """, guild_id, channel_id)
+
+    await connection.close()
+
+
+async def get_announcement_channel(guild_id):
+    connection = await asyncpg.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+
+    channel_id = await connection.fetchval("""
+        SELECT announcement_channel_id
+        FROM guild_settings
+        WHERE guild_id = $1
+    """, guild_id)
+
+    await connection.close()
+
+    return channel_id
