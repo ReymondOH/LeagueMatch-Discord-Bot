@@ -1,27 +1,23 @@
 import os
-import asyncio
 
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 from dotenv import load_dotenv
-from database import (
+from services.match_tracker import setup_match_tracker
+from database.database import (
     set_tracking,
     delete_account,
-    get_announcement_channel,
     set_announcement_channel,
     create_database,
     save_account,
     get_account,
-    get_all_accounts,
-    get_last_game_id,
-    update_last_game_id
 )
 
-from riot_api import (
+from utils.embeds import create_match_embed
+
+from services.riot_api import (
     get_account_by_riot_id,
     get_current_game,
-    get_champion_names,
-    get_player_rank
 )
 
 
@@ -44,107 +40,6 @@ RIOT_API_KEY = os.getenv("RIOT_API_KEY")
 print("Riot key loaded:", RIOT_API_KEY is not None)
 
 
-@tasks.loop(seconds=60)
-async def check_player_activity():
-    print("Checking linked player activity...")
-
-    accounts = await get_all_accounts()
-
-    for account in accounts:
-        guild_id = account["guild_id"]
-        discord_id = account["discord_id"]
-        riot_id = account["riot_id"]
-        puuid = account["puuid"]
-        platform = account["platform"]
-        tracking_enabled = account["tracking_enabled"]
-
-        if not tracking_enabled:
-            print(f"{riot_id}: Tracking is disabled")
-            continue
-
-        guild = bot.get_guild(guild_id)
-
-        if guild is None:
-            print(f"{riot_id}: Discord server not found")
-            continue
-
-        member = guild.get_member(discord_id)
-
-        if member is None:
-            print(f"{riot_id}: Discord member not found in {guild.name}")
-            continue
-        
-
-        if member is None:
-            print(f"{riot_id}: Discord member not found")
-            continue
-
-        print(f"Discord member found: {member}")
-
-        print("Activities:")
-        for activity in member.activities:
-            print(f"  - {activity.name}")
-
-        playing_league = any(
-            activity.name == "League of Legends"
-            for activity in member.activities
-        )
-
-        if playing_league:
-            print(f"{riot_id}: Playing League - checking current game")
-
-            game = await get_current_game(
-                puuid,
-                platform=platform
-            )
-
-            if game is None:
-                print(f"{riot_id}: Not currently in a game")
-                continue
-
-            game_id = game["gameId"]
-
-            last_game_id = await get_last_game_id(guild_id, discord_id)
-
-            if last_game_id == game_id:
-                print(f"{riot_id}: Already notified for this game - skipping")
-                continue
-
-            print(f"{riot_id}: New game detected"
-                  )
-
-            channel_id = await get_announcement_channel(
-                guild_id
-            )
-
-            if channel_id is None:
-                print(f"{guild.name}: No annuncement channel set")
-                continue
-
-            channel = bot.get_channel(channel_id)
-
-            if channel is None:
-                print(f"{guild.name}: Announcement channel not found")
-                continue
-
-            embed = await create_match_embed(
-                game, 
-                riot_id,
-                platform
-            )
-
-            await channel.send(embed=embed)
-
-            await update_last_game_id(guild_id, discord_id, game_id)
-
-            print(f"{riot_id}: Notification sent for game {game_id}")
-
-        else:
-            print(f"{riot_id}: Not playing League - skipping")
-
-@check_player_activity.before_loop
-async def before_check_player_activity():
-    await bot.wait_until_ready()
 
 @bot.event
 async def on_ready():
@@ -279,69 +174,11 @@ async def tracking(
             "🔕 Automatic match notifications are now disabled."
         )
 
-async def create_match_embed(game, riot_id, platform):
-    champion_names = await get_champion_names()
+check_player_activity = setup_match_tracker(
+    bot,
+    create_match_embed
+)
 
-    blue_team = []
-    red_team = []
-
-    rank_tasks = []
-
-    for participant in game["participants"]:
-        rank_tasks.append(
-            get_player_rank(
-                participant["puuid"],
-                platform=platform
-            )
-        )
-
-    player_ranks = await asyncio.gather(*rank_tasks)
-
-    for participant, player_rank in zip(
-        game["participants"],
-        player_ranks
-    ):
-        player_riot_id = participant["riotId"]
-        champion_id = participant["championId"]
-
-        champion_name = champion_names.get(
-            champion_id,
-            f"Champion {champion_id}"
-        )
-
-        player_info = (
-            f"**{player_riot_id}** — {champion_name}\n"
-            f"└ {player_rank}"
-        )
-
-        if participant["teamId"] == 100:
-            blue_team.append(player_info)
-
-        elif participant["teamId"] == 200:
-            red_team.append(player_info)
-
-    embed = discord.Embed(
-        title="🎮 Live League Match",
-        description=f"**{riot_id}** has entered a game!"
-    )
-
-    embed.add_field(
-        name="🔵 Blue Team",
-        value="\n".join(blue_team),
-        inline=False
-    )
-
-    embed.add_field(
-        name="🔴 Red Team",
-        value="\n".join(red_team),
-        inline=False
-    )
-
-    embed.set_footer(
-        text=f"Game ID: {game['gameId']}"
-    )
-
-    return embed
 
 #Temporary command to check if the bot can read the user's Discord activity
 @bot.tree.command(
@@ -370,6 +207,7 @@ async def activity(interaction: discord.Interaction):
         await interaction.response.send_message(
             "League of Legends not detected."
         )
+
 
 @bot.tree.command(
     name="setchannel",
@@ -402,7 +240,6 @@ async def setchannel(
         f"League match notifications will be sent to {channel.mention}."
     )
 
-    
 
 @bot.tree.command(
     name="live",
