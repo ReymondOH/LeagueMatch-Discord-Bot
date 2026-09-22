@@ -133,3 +133,65 @@ async def get_player_rank(puuid, platform="la1"):
             print(f"Response: {error_text}")
 
             return "Unknown"
+
+async def get_match_ids(puuid, count=10):
+    url = (
+        f"https://americas.api.riotgames.com/"
+        f"lol/match/v5/matches/by-puuid/{puuid}/ids"
+    )
+
+    params = {
+        "start": 0,
+        "count": count
+    }
+
+    headers = {
+        "X-Riot-Token": RIOT_API_KEY
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            url,
+            headers=headers,
+            params=params
+        ) as response:
+
+            if response.status != 200:
+                print(
+                    f"Match history error: "
+                    f"{response.status}"
+                )
+                error_text = await response.text()
+
+                print(error_text)
+                print("Request URL:", response.url)
+                
+                return []
+
+            return await response.json()
+
+async def get_match(match_id):
+    
+    url = (
+        f"https://americas.api.riotgames.com/"
+        f"lol/match/v5/matches/{match_id}"
+    )
+
+    headers = {
+        "X-Riot-Token": RIOT_API_KEY
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            url,
+            headers=headers
+        ) as response:
+
+            if response.status != 200:
+                print(
+                    f"Match error {match_id}: "
+                    f"{response.status}"
+                )
+                return None
+
+            return await response.json()

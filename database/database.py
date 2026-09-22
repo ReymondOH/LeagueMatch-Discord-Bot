@@ -41,7 +41,32 @@ async def create_database():
         guild_id BIGINT PRIMARY KEY,
         announcement_channel_id BIGINT NOT NULL
     )
-""")
+    """)
+
+    await connection.execute("""
+        CREATE TABLE IF NOT EXISTS match_stats (
+            id SERIAL PRIMARY KEY,
+
+            match_id VARCHAR(100) NOT NULL,
+            patch VARCHAR(20) NOT NULL,
+
+            champion_id INTEGER NOT NULL,
+            opponent_id INTEGER NOT NULL,
+
+            role VARCHAR(20) NOT NULL,
+
+            keystone_id INTEGER NOT NULL,
+
+            spell1_id INTEGER NOT NULL,
+            spell2_id INTEGER NOT NULL,
+
+            win BOOLEAN NOT NULL,
+
+            puuid VARCHAR(100) NOT NULL
+
+            UNIQUE(match_id, champion_id)
+        );
+    """)
 
     await connection.close()
 
@@ -83,6 +108,7 @@ async def save_account(
         puuid,
         platform
     )
+    
 
     await connection.close()
 
@@ -242,3 +268,111 @@ async def get_announcement_channel(guild_id):
     await connection.close()
 
     return channel_id
+
+async def create_match_stats_table():
+
+    conn = await asyncpg.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS match_stats (
+            id SERIAL PRIMARY KEY,
+
+            match_id VARCHAR(100) NOT NULL,
+            patch VARCHAR(20) NOT NULL,
+
+            champion_id INTEGER NOT NULL,
+            opponent_id INTEGER NOT NULL,
+
+            role VARCHAR(20) NOT NULL,
+
+            keystone_id INTEGER NOT NULL,
+
+            spell1_id INTEGER NOT NULL,
+            spell2_id INTEGER NOT NULL,
+
+            win BOOLEAN NOT NULL,
+
+            UNIQUE(match_id, champion_id)
+        );
+    """)
+
+    await conn.close()
+
+async def save_match_stat(
+    match_id,
+    patch,
+    champion_id,
+    opponent_id,
+    role,
+    keystone_id,
+    spell1_id,
+    spell2_id,
+    win,
+    puuid
+):
+
+    conn = await asyncpg.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+
+    await conn.execute("""
+        INSERT INTO match_stats (
+            match_id,
+            patch,
+            champion_id,
+            opponent_id,
+            role,
+            keystone_id,
+            spell1_id,
+            spell2_id,
+            win,
+            puuid
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (match_id, champion_id)
+        DO UPDATE SET
+            puuid = EXCLUDED.puuid
+    """,
+        match_id,
+        patch,
+        champion_id,
+        opponent_id,
+        role,
+        keystone_id,
+        spell1_id,
+        spell2_id,
+        win,
+        puuid
+    )
+
+    await conn.close()
+
+async def get_sample_puuids(limit=5):
+    conn = await asyncpg.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+
+    rows = await conn.fetch("""
+        SELECT DISTINCT puuid
+        FROM match_stats
+        WHERE puuid IS NOT NULL
+        LIMIT $1
+    """, limit)
+
+    await conn.close()
+
+    return [row["puuid"] for row in rows]
