@@ -14,6 +14,4 @@ Install dependencies for the bot following its existing Python requirements, pro
 
 For the web project, see [web/README.md](web/README.md). On Windows PowerShell, in `web/` run `npm.cmd install` and `npm.cmd run dev`; start FastAPI in a second terminal as described there.
 
-For the hosted database, API, and Riot application steps, see [web/DEPLOYMENT.md](web/DEPLOYMENT.md). The root [render.yaml](render.yaml) points Render at `web/`.
-
 LeagueMatch is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties.
