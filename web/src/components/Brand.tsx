@@ -1,0 +1,1 @@
+export default function Brand() { return <a href="#dashboard" className="brand" aria-label="LeagueMatch dashboard"><span className="brand-symbol" aria-hidden="true">L<span>▪</span></span><span>League<span className="brand-accent">Match</span></span></a>; }

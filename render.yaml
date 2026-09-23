@@ -1,0 +1,20 @@
+# Put this file at the root of the combined LeagueMatch Discord bot repository.
+# It is a template for the Python API. The database is created separately.
+services:
+  - type: web
+    name: leaguematch-stats-api
+    runtime: python
+    plan: free
+    rootDir: web
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: DEMO_MODE
+        value: "false"
+      - key: DB_SSL
+        value: require
+      - key: CORS_ORIGINS
+        value: https://leaguematch-reymond.reymondeliasortiz.chatgpt.site
+      - key: DATABASE_URL
+        sync: false

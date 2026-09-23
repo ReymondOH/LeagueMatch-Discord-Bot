@@ -62,11 +62,13 @@ async def create_database():
 
             win BOOLEAN NOT NULL,
 
-            puuid VARCHAR(100) NOT NULL
+            puuid VARCHAR(100) NOT NULL,
 
             UNIQUE(match_id, champion_id)
         );
     """)
+
+    await connection.execute("ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS puuid VARCHAR(100)")
 
     await connection.close()
 
@@ -298,9 +300,13 @@ async def create_match_stats_table():
 
             win BOOLEAN NOT NULL,
 
+            puuid VARCHAR(100),
+
             UNIQUE(match_id, champion_id)
         );
     """)
+
+    await conn.execute("ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS puuid VARCHAR(100)")
 
     await conn.close()
 
