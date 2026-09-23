@@ -127,7 +127,7 @@ Filters are optional. Allowed roles: `TOP`, `JUNGLE`, `MIDDLE`, `BOTTOM`, `UTILI
 
 ## Hosting the complete stack
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for the concrete GitHub, hosted PostgreSQL, Render API, and published Site steps. A root-level `render.yaml` is included for the combined repository.
+A root-level `render.yaml` is included for the combined repository.
 
 1. Run the Python service on a Python-capable host with network access to PostgreSQL. A Dockerfile is included: `docker build -f backend/Dockerfile -t leaguematch-api .` from the project root.
 2. Set backend environment variables through that host's secret settings. Set `DEMO_MODE=false`. Use TLS for a remote database as required by your provider (`DB_SSL=require` or `verify-full`). A `DATABASE_URL` can replace the separate DB settings.
