@@ -1,58 +1,57 @@
-# LeagueMatch Web
+# LeagueMatch
 
-A React + TypeScript dashboard for the LeagueMatch Discord bot. Players can explore historical champion matchups by champion, role, and patch. A separate Python FastAPI service reads aggregate statistics from the bot's PostgreSQL `match_stats` table.
+LeagueMatch pairs a Discord bot that announces a linked player's active League of Legends match with a website for exploring collected ranked solo matchups. The dashboard shows sample sizes alongside win rates; it does not predict match outcomes.
 
-## What is implemented
+**Website:** https://league-match-discord-bot.vercel.app/  
+**API health:** https://leaguematch-stats-api.onrender.com/api/health  
+**Bot access:** [Request test access](https://github.com/ReymondOH/LeagueMatch-Discord-Bot/issues/new). Do not post credentials or private account identifiers in an issue.
 
-- React components for matchup exploration, bot documentation, and data/privacy information.
-- Champion, role, and patch filters; win rates with observation counts; deterministic pagination.
-- Loading, connection-error, empty-result, and explicit demo states.
-- FastAPI endpoints with input validation, bounded pagination, connection pooling, and read-only SQL transactions.
-- No participant identifiers are returned by the dashboard API.
-- Existing Discord bot remains separate: account linking, notifications, and Riot API collection still run there.
+## Current features
 
-**Deployment status:** The hosted frontend uses clearly labeled synthetic data until `VITE_API_BASE_URL` is configured and the Python service is separately deployed. The existing Site hosts the built React assets; it does not run Python or reach your computer's PostgreSQL server. The Site's audience remains private.
+- In a Discord server, `/link` associates a Discord member with a Riot ID; `/unlink` removes the link for that server.
+- `/setchannel` lets a member with **Manage Server** permission choose the announcement channel. `/tracking` controls automatic announcements, `/live` checks the linked player's current game, and `/activity` checks the Discord activity visible to the bot.
+- The bot checks linked members' visible activity before asking Riot for a current game, then avoids announcing the same game twice to that link.
+- A separate collector saves ranked solo match observations to PostgreSQL. FastAPI returns aggregate statistics; the React dashboard filters them by champion, role, and patch. The public API does not return Discord IDs, Riot IDs, or PUUIDs.
 
-## Stack
+The collector is **separate from the bot**. Starting the bot does not collect historical matches. Its current run samples five players and requests up to ten recent matches per player. The match-score feature is planned, not implemented.
 
-| Layer | Technology |
-| --- | --- |
-| Interface | React, TypeScript, Vite, CSS, Lucide icons |
-| HTTP API | Python, FastAPI, Uvicorn, Pydantic |
-| Database access | asyncpg, PostgreSQL |
-| Existing bot | Python, discord.py, Riot APIs |
+## Architecture
 
 ```mermaid
 flowchart TD
-  Riot["Riot APIs"] --> Collector["Existing stats collector"]
-  Collector --> PG["PostgreSQL match_stats"]
-  PG --> API["FastAPI aggregate queries"]
-  API --> Web["React dashboard"]
+  Riot["Riot APIs"] --> Bot["Discord bot"]
+  Riot --> Collector["Stats collector"]
+  Bot --> DB["Neon PostgreSQL"]
+  Collector --> DB
+  DB --> API["Render FastAPI"]
+  API --> Site["Vercel React dashboard"]
 ```
 
-The website does not need a Riot API key. It reads data already collected by the bot. Secrets stay in the Python services' environment variables.
+## Try the bot
 
-## 1. Run the React website
+1. Request test access using the link above. A server admin adds the bot and allows it to view the selected channel, send messages, and embed links.
+2. Run `/link` with your Riot game name and tag line. Never give the bot your Riot password.
+3. A member with Manage Server permission runs `/setchannel` to select a text channel.
+4. Run `/live` while in a match. For automatic announcements, enable `/tracking` and make sure Discord shows League of Legends as your activity. Use `/activity` to check what the bot detects.
+5. Disable notifications with `/tracking enabled:false`, or remove the link in that server with `/unlink`. Earlier announcements and collected history are not automatically erased.
 
-Install Node.js 22.12+ and Python 3.12+ if you also want the backend. Open a terminal in **the folder containing this README and package.json**. There is no `frontend` subfolder.
+The dashboard can be explored without linking a Discord account. A direct bot invite is not published; the maintainer currently arranges access.
+
+## Run the website locally
+
+This README belongs in `web/` in the combined bot repository. Run commands from the folder containing `package.json`; there is no `frontend/` folder.
 
 ```powershell
 npm install
+Copy-Item .env.example .env
 npm run dev
 ```
 
-Open the Local URL printed in the terminal (normally `http://localhost:5173`). The website immediately works using its bundled synthetic dataset. You do not install React separately; `npm install` installs the declared dependencies.
+With `VITE_API_BASE_URL` blank, the site shows explicitly labeled demo data. To use the deployed API, set `VITE_API_BASE_URL=https://leaguematch-stats-api.onrender.com/api` in `web/.env` and restart Vite. This variable is public: never place a database password, Riot key, or Discord token in a `VITE_*` variable. Run `npm run build` to type-check and produce `dist/`.
 
-```powershell
-npm run typecheck
-npm run build
-```
+## Run FastAPI locally
 
-`npm run build` writes the production frontend to `dist/`.
-
-## 2. Run FastAPI locally
-
-In a second terminal, in the same project folder, on Windows:
+From `web/` on Windows:
 
 ```powershell
 py -m venv .venv
@@ -62,122 +61,32 @@ cd backend
 ..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
 
-On macOS/Linux:
+The example configuration starts in demo mode. To read PostgreSQL, set `DEMO_MODE=false`, supply `DATABASE_URL` or the separate `DB_*` settings in `backend/.env`, and set `DB_SSL=require` for Neon. Set `CORS_ORIGINS` to the exact frontend origin. Check `/api/health` for `source: database` and `/api/stats` for real aggregates. The API needs only SELECT access to `match_stats`.
 
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r backend/requirements.txt
-cp backend/.env.example backend/.env
-cd backend
-../.venv/bin/python -m uvicorn app.main:app --reload --port 8000
-```
+From the **combined repository root**, run the collector explicitly with `python -m services.stats_collector`. Its database settings must point to the same database as FastAPI for new results to appear on the website. Do not commit `.env` files or database backups.
 
-Visit `http://localhost:8000/docs` for interactive API documentation. By default the API uses the same demo records as React, so no database is required for this first run.
+## API
 
-In the project root, copy `.env.example` to `.env` and set:
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/health` | Reports demo or database connectivity |
+| `GET /api/stats` | Returns aggregate matchups, totals, and filter options |
 
-```dotenv
-VITE_API_BASE_URL=/api
-```
+`/api/stats` accepts optional `champion_id`, `role`, `patch`, `page`, and `page_size` (1–50). `matches` counts distinct match IDs; `observations` counts stored participant observations. Win rates describe the collected sample. There is no public write endpoint.
 
-Restart `npm run dev`. Vite proxies `/api` to FastAPI on port 8000. The dataset banner still identifies demo responses as demo, even when they arrive through the API.
+## Deployment and Riot review
 
-## 3. Connect your collector's real PostgreSQL database
+Vercel builds `web/`; Render hosts FastAPI; Neon stores PostgreSQL data. Vercel's `VITE_API_BASE_URL` points to the Render URL ending in `/api`. Render uses private `DATABASE_URL`, `DB_SSL=require`, `DEMO_MODE=false`, and `CORS_ORIGINS` set to the Vercel origin. The checked-in `render.yaml` contains an older CORS origin; update it or the Render setting before redeploying from the Blueprint. See [DEPLOYMENT.md](DEPLOYMENT.md).
 
-Edit `backend/.env`:
+Before submitting to Riot, verify the published [Terms](https://league-match-discord-bot.vercel.app/#terms) and [Privacy](https://league-match-discord-bot.vercel.app/#privacy) pages, arrange bot access for reviewers, and test the commands and dashboard end to end. A short recording can demonstrate the Discord flow. The website's contact path currently uses a public GitHub issue to begin a private deletion request; define a private channel and deletion process before representing that flow as complete.
 
-```dotenv
-DEMO_MODE=false
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=your_existing_bot_database
-DB_USER=your_database_user
-DB_PASSWORD=your_database_password
-DB_SSL=disable
-CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
-```
+## Next steps
 
-Restart FastAPI. `/api/health` should report `source: database`. An empty collector table produces an empty dashboard; the API never replaces database errors with fake results.
+- Handle Riot rate limits, expired keys, and transient API errors distinctly.
+- Define a private contact and deletion process for stored account data.
+- Improve collector coverage and scheduling after testing writes to Neon and Riot key limits.
+- Assess any proposed match score against Riot's game integrity rules.
 
-The service needs SELECT permission on `match_stats`. Prefer a dedicated read-only database user for a hosted API. The API does not automatically create tables or change existing data. `backend/sql/schema.sql` is an optional compatible setup script; inspect it and run it yourself in pgAdmin or psql if needed. It preserves existing rows.
-
-### Existing bot schema issue
-
-The uploaded `database/database.py` has a missing comma after `puuid VARCHAR(100) NOT NULL` in one table definition. Add the comma before `UNIQUE(match_id, champion_id)`. Another older table definition lacks `puuid`; the optional SQL adds that column if missing. This project does not overwrite your bot files.
-
-The current bot deduplicates on `(match_id, champion_id)`. The API reads the same schema. It only displays rows with standard Summoner's Rift roles. It assumes the collector's existing `queue_id == 420` restriction has been applied, because queue ID is not stored in this table.
-
-## API contract
-
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| GET | `/api/health` | Database connectivity or explicit demo status |
-| GET | `/api/stats` | Filtered totals, matchup rows, and filter options |
-| GET | `/docs` | Generated OpenAPI documentation |
-
-Example:
-
-```text
-/api/stats?champion_id=22&role=BOTTOM&patch=16.18&page=1&page_size=8
-```
-
-Filters are optional. Allowed roles: `TOP`, `JUNGLE`, `MIDDLE`, `BOTTOM`, `UTILITY`. Page size is 1–50. All values are SQL parameters. No route accepts an arbitrary SQL query or writes to the database.
-
-`matches` counts distinct match IDs; `observations` counts participant records; `matchups` counts champion/opponent/role groups. Win rate is wins divided by observations for a group, rounded to one decimal. Matchups sort by observation count, then champion, opponent, and role. Filters apply before counting and pagination. Results are descriptive of the collected sample, not population estimates or predictions. No player profiles are exposed without an authentication and consent design.
-
-## Hosting the complete stack
-
-A root-level `render.yaml` is included for the combined repository.
-
-1. Run the Python service on a Python-capable host with network access to PostgreSQL. A Dockerfile is included: `docker build -f backend/Dockerfile -t leaguematch-api .` from the project root.
-2. Set backend environment variables through that host's secret settings. Set `DEMO_MODE=false`. Use TLS for a remote database as required by your provider (`DB_SSL=require` or `verify-full`). A `DATABASE_URL` can replace the separate DB settings.
-3. Set `CORS_ORIGINS` to the exact website origin. It is a comma-separated list; there is no wildcard default.
-4. Set frontend `VITE_API_BASE_URL=https://YOUR-API-HOST/api` and rebuild the frontend. This value is public. Never put database passwords, Discord tokens, or Riot API keys in `VITE_*` variables.
-5. Configure the API host's request limits, HTTPS, and monitoring before public traffic. Add caching when usage warrants it; this initial implementation queries on demand.
-6. Set the Site's audience to public when ready for Riot to review it. Keep example data labeled and describe planned features honestly.
-
-The Python service is included as source but is not deployed by the Sites frontend publishing workflow. If the database was unavailable at startup, correct the configuration and restart the API process.
-
-## Tests
-
-From the project root on macOS/Linux:
-
-```bash
-.venv/bin/python -m pip install -r backend/requirements-dev.txt
-cd backend
-../.venv/bin/python -m pytest -q
-```
-
-On Windows, use `.\.venv\Scripts\python.exe` for installation, and `..\.venv\Scripts\python.exe -m pytest -q` from `backend`.
-
-Tests cover filtering, aggregate arithmetic, pagination, invalid inputs, absence of private identifiers, explicit connection failures, and CORS. A real connection to your PostgreSQL instance must be verified on your machine.
-
-## Project structure
-
-```text
-src/
-  App.tsx                 Navigation and shared layout
-  components/             Dashboard, About, Privacy, Brand
-  api.ts                  Typed API client and explicit demo adapter
-  types.ts                API response types
-  data/                   Synthetic fixtures and champion display names
-  styles.css              Responsive styling
-backend/
-  app/main.py             FastAPI app and validated endpoints
-  app/models.py           Response schemas
-  app/repository.py       Parameterized aggregate queries
-  sql/schema.sql          Optional collector-compatible table setup
-  tests/test_api.py        API behavior tests
-  Dockerfile              Separate Python deployment
-```
-
-## Roadmap
-
-- Rune and summoner-spell breakdowns with sample sizes.
-- Collector reliability, migrations, and integration tests against PostgreSQL.
-- Authentication and explicit consent before any personal player dashboard.
-- An explainable post-match score, subject to Riot's applicable policies. No score is implemented yet.
-
-## Attribution
+## Riot notice
 
 LeagueMatch is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games and all associated properties are trademarks or registered trademarks of Riot Games, Inc.
