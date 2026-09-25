@@ -134,6 +134,22 @@ async def get_player_rank(puuid, platform="la1"):
 
             return "Unknown"
 
+
+async def get_solo_rank_tier(puuid, platform):
+    """Current solo queue tier; None on unranked or API failure."""
+    url = (f"https://{platform}.api.riotgames.com"
+           f"/lol/league/v4/entries/by-puuid/{puuid}")
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers={"X-Riot-Token": RIOT_API_KEY}) as response:
+            if response.status == 429:
+                raise RuntimeError(f"Rank lookup rate limited; Retry-After: "
+                                   f"{response.headers.get('Retry-After', 'unknown')}")
+            if response.status != 200:
+                raise RuntimeError(f"Rank lookup failed: HTTP {response.status}")
+            entries = await response.json()
+    return next((entry["tier"].upper() for entry in entries
+                 if entry.get("queueType") == "RANKED_SOLO_5x5"), None)
+
 async def get_match_ids(puuid, count=10):
     url = (
         f"https://americas.api.riotgames.com/"

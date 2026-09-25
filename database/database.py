@@ -13,6 +13,43 @@ DB_NAME = os.getenv("DB_NAME")
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 
+async def get_setup_stats(champion_id):
+    """Aggregate ranked solo matches for one champion across all roles."""
+    connection = await asyncpg.connect(
+        host=DB_HOST, port=DB_PORT, database=DB_NAME,
+        user=DB_USER, password=DB_PASSWORD,
+        ssl=os.getenv("DB_SSL", "require"),
+    )
+    try:
+        return await connection.fetch("""
+            SELECT rank_tier, keystone_id,
+                   LEAST(spell1_id, spell2_id) AS spell_low,
+                   GREATEST(spell1_id, spell2_id) AS spell_high,
+                   COUNT(*)::int AS games,
+                   COUNT(*) FILTER (WHERE win)::int AS wins
+            FROM match_stats
+            WHERE champion_id = $1 AND rank_tier IN
+                ('CHALLENGER', 'GRANDMASTER', 'MASTER', 'DIAMOND', 'EMERALD')
+            GROUP BY rank_tier, keystone_id, spell_low, spell_high
+        """, champion_id)
+    finally:
+        await connection.close()
+
+
+async def add_rank_tier_column():
+    """Call once before running the rank-aware collector."""
+    connection = await asyncpg.connect(
+        host=DB_HOST, port=DB_PORT, database=DB_NAME,
+        user=DB_USER, password=DB_PASSWORD,
+        ssl=os.getenv("DB_SSL", "require"),
+    )
+    try:
+        await connection.execute(
+            "ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS rank_tier VARCHAR(20)"
+        )
+    finally:
+        await connection.close()
+
 
 async def create_database():
     connection = await asyncpg.connect(
@@ -320,7 +357,8 @@ async def save_match_stat(
     spell1_id,
     spell2_id,
     win,
-    puuid
+    puuid,
+    rank_tier=None
 ):
 
     conn = await asyncpg.connect(
@@ -342,12 +380,14 @@ async def save_match_stat(
             spell1_id,
             spell2_id,
             win,
-            puuid
+            puuid,
+            rank_tier
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (match_id, champion_id)
         DO UPDATE SET
-            puuid = EXCLUDED.puuid
+            puuid = EXCLUDED.puuid,
+            rank_tier = COALESCE(EXCLUDED.rank_tier, match_stats.rank_tier)
     """,
         match_id,
         patch,
@@ -358,7 +398,8 @@ async def save_match_stat(
         spell1_id,
         spell2_id,
         win,
-        puuid
+        puuid,
+        rank_tier
     )
 
     await conn.close()

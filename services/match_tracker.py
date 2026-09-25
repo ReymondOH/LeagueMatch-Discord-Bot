@@ -94,7 +94,8 @@ def setup_match_tracker(bot, create_match_embed):
                 embed = await create_match_embed(
                     game, 
                     riot_id,
-                    platform
+                    platform,
+                    puuid
                 )
 
                 await channel.send(embed=embed)

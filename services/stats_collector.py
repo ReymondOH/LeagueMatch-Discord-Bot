@@ -1,12 +1,32 @@
 from services.riot_api import (
     get_match_ids,
     get_match,
-    get_account_by_riot_id
+    get_solo_rank_tier
 )
 
 import asyncio
 
-from database.database import save_match_stat, get_sample_puuids
+from database.database import save_match_stat, get_sample_puuids, add_rank_tier_column
+
+rank_cache = {}
+
+
+async def rank_for_participant(puuid, match_id):
+    # Match IDs identify the platform, e.g. LA1_... or NA1_...
+    platform = match_id.split("_", 1)[0].lower()
+    if platform not in {"na1", "la1", "la2", "euw1", "eun1", "br1",
+                        "tr1", "ru", "kr", "jp1", "oc1", "ph2", "sg2",
+                        "th2", "tw2", "vn2"}:
+        return None
+    key = (platform, puuid)
+    if key not in rank_cache:
+        try:
+            rank_cache[key] = await get_solo_rank_tier(puuid, platform)
+        except RuntimeError as error:
+            print(f"Cannot look up rank for this match: {error}")
+            raise
+        await asyncio.sleep(1.5)
+    return rank_cache[key]
 
 def find_opponent(participant, participants):
 
@@ -94,11 +114,11 @@ async def collect_matches(puuid, count=5):
             champion = participant["championName"]
             opponent_champion = opponent["championName"]
             puuid = participant["puuid"]
+            rank_tier = await rank_for_participant(puuid, match_id)
 
             position = participant["teamPosition"]
             win = participant["win"]
             opponent_id = opponent["championId"]
-
             await save_match_stat(
                 match_id,
                 patch,
@@ -109,7 +129,8 @@ async def collect_matches(puuid, count=5):
                 spell1_id,
                 spell2_id,
                 win,
-                puuid
+                puuid,
+                rank_tier
             )
 
             print(
@@ -117,7 +138,7 @@ async def collect_matches(puuid, count=5):
                 f"{position} | "
                 f"Keystone: {keystone_id} | "
                 f" Spells: {spell1_id} / {spell2_id}"
-                f" patch: {patch} | "
+                f" patch: {patch} | Rank snapshot: {rank_tier or 'Unknown'} | "
                 f"{'WIN' if win else 'LOSS'}"
             )
 
@@ -146,7 +167,7 @@ if __name__ == "__main__":
     import asyncio
 
     async def test():
-
+        await add_rank_tier_column()
         await collect_from_multiple_players(
             player_limit=5,
             matches_per_player=10

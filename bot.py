@@ -283,7 +283,8 @@ async def live(
     embed = await create_match_embed(
         game,
         riot_id,
-        platform
+        platform,
+        puuid
     )
 
     await interaction.followup.send(embed=embed)
