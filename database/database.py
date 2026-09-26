@@ -12,6 +12,70 @@ DB_PORT = os.getenv("DB_PORT")
 DB_NAME = os.getenv("DB_NAME")
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
+_rank_cache_ready = False
+
+
+async def get_saved_player_ranks(puuids, platform):
+    """Use saved full ranks, falling back to the collector's last tier."""
+    global _rank_cache_ready
+    if not puuids:
+        return {}
+    connection = await asyncpg.connect(
+        host=DB_HOST, port=DB_PORT, database=DB_NAME,
+        user=DB_USER, password=DB_PASSWORD,
+        ssl=os.getenv("DB_SSL", "require"),
+    )
+    try:
+        if not _rank_cache_ready:
+            await connection.execute("""
+                CREATE TABLE IF NOT EXISTS player_rank_cache (
+                    puuid VARCHAR(100) NOT NULL,
+                    platform VARCHAR(10) NOT NULL,
+                    rank_text TEXT NOT NULL,
+                    saved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    PRIMARY KEY (puuid, platform)
+                )
+            """)
+            _rank_cache_ready = True
+        full_ranks = await connection.fetch("""
+            SELECT puuid, rank_text FROM player_rank_cache
+            WHERE puuid = ANY($1::varchar[]) AND platform = $2
+        """, puuids, platform)
+        saved = {row["puuid"]: row["rank_text"] for row in full_ranks}
+        tiers = await connection.fetch("""
+            SELECT DISTINCT ON (puuid) puuid, rank_tier
+            FROM match_stats
+            WHERE puuid = ANY($1::varchar[]) AND rank_tier IS NOT NULL
+            ORDER BY puuid, id DESC
+        """, puuids)
+        for row in tiers:
+            if row["puuid"] not in saved:
+                tier = row["rank_tier"].title()
+                saved[row["puuid"]] = f"{tier} (division/LP unavailable)"
+        return saved
+    finally:
+        await connection.close()
+
+
+async def save_player_ranks(platform, ranks):
+    """Persist newly looked-up ranks for reuse in future embeds."""
+    if not ranks:
+        return
+    connection = await asyncpg.connect(
+        host=DB_HOST, port=DB_PORT, database=DB_NAME,
+        user=DB_USER, password=DB_PASSWORD,
+        ssl=os.getenv("DB_SSL", "require"),
+    )
+    try:
+        await connection.executemany("""
+            INSERT INTO player_rank_cache (puuid, platform, rank_text)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (puuid, platform) DO UPDATE SET
+                rank_text = EXCLUDED.rank_text, saved_at = NOW()
+        """, [(puuid, platform, rank) for puuid, rank in ranks.items()])
+    finally:
+        await connection.close()
+
 
 async def get_setup_stats(champion_id):
     """Aggregate ranked solo matches for one champion across all roles."""
@@ -417,6 +481,7 @@ async def get_sample_puuids(limit=5):
         SELECT DISTINCT puuid
         FROM match_stats
         WHERE puuid IS NOT NULL
+          AND rank_tier IN ('EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER')
         LIMIT $1
     """, limit)
 

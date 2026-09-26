@@ -169,7 +169,7 @@ if __name__ == "__main__":
     async def test():
         await add_rank_tier_column()
         await collect_from_multiple_players(
-            player_limit=5,
+            player_limit=6,
             matches_per_player=10
         )
 

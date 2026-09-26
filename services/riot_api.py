@@ -8,6 +8,7 @@ load_dotenv()
 RIOT_API_KEY = os.getenv("RIOT_API_KEY")
 
 
+
 async def get_account_by_riot_id(game_name, tag_line):
 
     url = (

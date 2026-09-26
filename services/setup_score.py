@@ -46,6 +46,46 @@ def score_setup(rows, keystone_id, spell1_id, spell2_id):
                                  if row["rank_tier"] == "EMERALD")}
 
 
+def score_choice(rows, predicate):
+    """Rate one choice against the champion's observed baseline."""
+    matched = [row for row in rows if predicate(row)]
+    high_games = sum(row["games"] for row in matched
+                     if row["rank_tier"] in HIGH_TIERS)
+    selected = rows if high_games < MIN_GAMES else [
+        row for row in rows if row["rank_tier"] in HIGH_TIERS]
+    matched = [row for row in selected if predicate(row)]
+    games = sum(row["games"] for row in matched)
+    if games < MIN_GAMES or sum(row["games"] for row in selected) < MIN_GAMES:
+        return None
+    base_weight = sum(row["games"] * WEIGHTS[row["rank_tier"]]
+                      for row in selected)
+    base_wins = sum(row["wins"] * WEIGHTS[row["rank_tier"]]
+                    for row in selected)
+    choice_weight = sum(row["games"] * WEIGHTS[row["rank_tier"]]
+                        for row in matched)
+    choice_wins = sum(row["wins"] * WEIGHTS[row["rank_tier"]]
+                      for row in matched)
+    return {"score": round(100 * (choice_wins + PRIOR_GAMES * base_wins / base_weight)
+                           / (choice_weight + PRIOR_GAMES)),
+            "baseline": 100 * base_wins / base_weight, "games": games}
+
+
+async def get_participant_setup_scores(participant):
+    perks = participant.get("perks") or {}
+    keystone = (perks.get("perkIds") or [None])[0]
+    spell1, spell2 = participant.get("spell1Id"), participant.get("spell2Id")
+    if not (participant.get("championId") and keystone and spell1 and spell2):
+        return {"setup": None, "spells": None, "keystone": None}
+    rows = await get_setup_stats(participant["championId"])
+    low, high = sorted((spell1, spell2))
+    return {
+        "setup": score_setup(rows, keystone, spell1, spell2),
+        "spells": score_choice(rows, lambda row: row["spell_low"] == low
+                               and row["spell_high"] == high),
+        "keystone": score_choice(rows, lambda row: row["keystone_id"] == keystone),
+    }
+
+
 async def get_live_setup_score(game, puuid):
     """Score the linked player only, if live data identifies their setup."""
     participant = next((p for p in game.get("participants", [])
