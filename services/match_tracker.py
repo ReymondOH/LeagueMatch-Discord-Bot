@@ -9,6 +9,7 @@ from database.database import (
 )
 
 from services.riot_api import get_current_game
+from services.reminders import send_match_message
 
 def setup_match_tracker(bot, create_match_embed):
 
@@ -98,7 +99,9 @@ def setup_match_tracker(bot, create_match_embed):
                     puuid
                 )
 
-                await channel.send(embed=embed)
+                await send_match_message(
+                    channel.send, embed, game, guild_id, discord_id, platform, puuid
+                )
 
                 await update_last_game_id(guild_id, discord_id, game_id)
 

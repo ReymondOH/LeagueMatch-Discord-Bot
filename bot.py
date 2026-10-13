@@ -4,6 +4,7 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 from services.match_tracker import setup_match_tracker
+from services.reminders import initialize_reminders, MatchReminderView, send_match_message
 from database.database import (
     set_tracking,
     delete_account,
@@ -44,6 +45,10 @@ print("Riot key loaded:", RIOT_API_KEY is not None)
 @bot.event
 async def on_ready():
     await create_database()
+    await initialize_reminders()
+    if not getattr(bot, "reminder_view_registered", False):
+        bot.add_view(MatchReminderView())
+        bot.reminder_view_registered = True
 
     #Sync global commands
     synced = await bot.tree.sync()
@@ -287,6 +292,9 @@ async def live(
         puuid
     )
 
-    await interaction.followup.send(embed=embed)
+    await send_match_message(
+        interaction.followup.send, embed, game, interaction.guild.id,
+        interaction.user.id, platform, puuid, wait=True
+    )
 
 bot.run(DISCORD_TOKEN)
